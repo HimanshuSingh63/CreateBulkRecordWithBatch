@@ -1,0 +1,51 @@
+public class CreateBulkAccountsBatch implements Database.Batchable<Integer>, Database.Stateful {
+    
+    private Integer totalRecordsToCreate = 500000;
+    private Integer recordsCreated = 0;
+    private Integer batchSize = 10000;
+
+    public Iterable<Integer> start(Database.BatchableContext bc) {
+        List<Integer> chunks = new List<Integer>();
+        Integer remainingRecords = Math.min(batchSize, totalRecordsToCreate - recordsCreated);
+        
+        for (Integer i = 0; i < remainingRecords; i += 200) {
+            chunks.add(i);
+        }
+        
+        return chunks;
+    }
+    
+    public void execute(Database.BatchableContext bc, List<Integer> chunk) {
+        List<Account> accountsToInsert = new List<Account>();
+        Integer startIndex = chunk[0];
+        Integer endIndex = Math.min(startIndex + 200, batchSize);
+        
+        for (Integer i = startIndex; i < endIndex; i++) {
+            if (recordsCreated < totalRecordsToCreate) {
+                Account acc = new Account(
+                    Name = 'Bulk Account ' + (recordsCreated + 1),
+                    Description = 'Created by batch process'
+                );
+                accountsToInsert.add(acc);
+                recordsCreated++;
+            }
+        }
+        
+        if (!accountsToInsert.isEmpty()) {
+            insert accountsToInsert;
+        }
+    }
+    
+    public void finish(Database.BatchableContext bc) {
+        System.debug('Batch job completed. Total records created so far: ' + recordsCreated);
+        
+        if (recordsCreated < totalRecordsToCreate) {
+            // Chain the next batch
+            CreateBulkAccountsBatch nextBatch = new CreateBulkAccountsBatch();
+            nextBatch.recordsCreated = this.recordsCreated;
+            Database.executeBatch(nextBatch, 200);
+        } else {
+            System.debug('All ' + totalRecordsToCreate + ' records have been created.');
+        }
+    }
+}
